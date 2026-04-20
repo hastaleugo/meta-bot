@@ -1,34 +1,25 @@
 import aiohttp
 import asyncio
 import os
-import json
-from bs4 import BeautifulSoup
 from datetime import datetime
 
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK")
-CHECK_INTERVAL = 3600  # toutes les heures
+CHECK_INTERVAL = 3600
 
 BRAWLTIME_URL = "https://brawltime.ninja/api/meta/brawler"
-BRAWLIFY_URL = "https://api.brawlify.com/v1/brawlers"
 
 TIERS = {
     (55, 100): "S",
-    (52, 55): "A", 
+    (52, 55): "A",
     (49, 52): "B",
     (0, 49): "C"
 }
 
 TIER_EMOJI = {
     "S": "🔴",
-    "A": "🟠", 
+    "A": "🟠",
     "B": "🟡",
     "C": "⚪"
-}
-
-TREND_EMOJI = {
-    "up": "↑",
-    "down": "↓",
-    "stable": "→"
 }
 
 previous_meta = {}
@@ -42,12 +33,20 @@ def get_tier(winrate: float) -> str:
 
 async def fetch_brawltime() -> dict:
     try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://brawltime.ninja/",
+            "Origin": "https://brawltime.ninja"
+        }
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 BRAWLTIME_URL,
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=aiohttp.ClientTimeout(total=15)
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=20)
             ) as resp:
+                print(f"Brawltime status: {resp.status}")
                 if resp.status == 200:
                     data = await resp.json()
                     brawlers = {}
@@ -61,26 +60,10 @@ async def fetch_brawltime() -> dict:
                                 "usage": usage
                             }
                     return brawlers
+                else:
+                    print(f"Brawltime erreur: {resp.status}")
     except Exception as e:
         print(f"Erreur Brawltime: {e}")
-    return {}
-
-async def fetch_brawlify_names() -> dict:
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                BRAWLIFY_URL,
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=aiohttp.ClientTimeout(total=15)
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    names = {}
-                    for b in data.get("list", []):
-                        names[b.get("name", "").upper()] = b.get("name", "")
-                    return names
-    except Exception as e:
-        print(f"Erreur Brawlify: {e}")
     return {}
 
 async def get_meta() -> list:
@@ -122,12 +105,9 @@ def build_embed(meta: list, changes: list) -> dict:
         description += f"\n{TIER_EMOJI[tier]} **Tier {tier}**\n"
         for b in brawlers:
             trend = ""
-            if b["name"] in [c["name"] for c in changes]:
-                change = next(c for c in changes if c["name"] == b["name"])
-                if change["direction"] == "up":
-                    trend = " `↑`"
-                elif change["direction"] == "down":
-                    trend = " `↓`"
+            for c in changes:
+                if c["name"] == b["name"]:
+                    trend = " `↑`" if c["direction"] == "up" else " `↓`"
 
             description += (
                 f"`#{rank:02d}` **{b['name']}**{trend}\n"
@@ -151,12 +131,12 @@ def build_embed(meta: list, changes: list) -> dict:
 
 def detect_changes(old_meta: dict, new_meta: list) -> list:
     changes = []
+    tier_order = ["C", "B", "A", "S"]
     for b in new_meta:
         name = b["name"]
         new_tier = b["tier"]
         if name in old_meta:
             old_tier = old_meta[name]["tier"]
-            tier_order = ["C", "B", "A", "S"]
             if tier_order.index(new_tier) > tier_order.index(old_tier):
                 changes.append({"name": name, "direction": "up", "old": old_tier, "new": new_tier})
             elif tier_order.index(new_tier) < tier_order.index(old_tier):
@@ -170,7 +150,6 @@ async def send_or_update_meta(meta: list, changes: list):
 
     async with aiohttp.ClientSession() as session:
         if message_id is None:
-            # Premier envoi
             payload = {
                 "embeds": [embed],
                 "username": "Brawl Stars Meta",
@@ -185,7 +164,6 @@ async def send_or_update_meta(meta: list, changes: list):
                     message_id = data.get("id")
                     print(f"✅ Message meta créé : {message_id}")
         else:
-            # Mise à jour du message existant
             webhook_id = WEBHOOK_URL.split("/")[-2]
             webhook_token = WEBHOOK_URL.split("/")[-1]
             edit_url = f"https://discord.com/api/webhooks/{webhook_id}/{webhook_token}/messages/{message_id}"
@@ -236,12 +214,9 @@ async def main():
 
         if meta:
             changes = detect_changes(previous_meta, meta)
-
             await send_or_update_meta(meta, changes)
-
             if changes:
                 await send_alert(changes)
-
             previous_meta = {b["name"]: b for b in meta}
         else:
             print("⚠️ Impossible de récupérer la meta")
