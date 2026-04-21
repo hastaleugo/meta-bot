@@ -6,7 +6,7 @@ from datetime import datetime
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK")
 CHECK_INTERVAL = 3600
 
-BRAWLTIME_URL = "https://brawltime.ninja/api/meta/brawler"
+BRAWLIFY_URL = "https://api.brawlify.com/v1/brawlers"
 
 TIERS = {
     (55, 100): "S",
