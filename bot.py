@@ -163,6 +163,8 @@ async def send_or_update_meta(meta: list, changes: list):
                     data = await resp.json()
                     message_id = data.get("id")
                     print(f"✅ Message meta créé : {message_id}")
+                else:
+                    print(f"⚠️ Erreur envoi: {resp.status}")
         else:
             webhook_id = WEBHOOK_URL.split("/")[-2]
             webhook_token = WEBHOOK_URL.split("/")[-1]
@@ -173,7 +175,7 @@ async def send_or_update_meta(meta: list, changes: list):
                 if resp.status == 200:
                     print("✅ Message meta mis à jour")
                 else:
-                    print(f"⚠️ Erreur mise à jour: {resp.status}")
+                    print(f"⚠️ Erreur mise à jour: {resp.status} — recréation")
                     message_id = None
 
 async def send_alert(changes: list):
@@ -221,7 +223,7 @@ async def main():
         else:
             print("⚠️ Impossible de récupérer la meta")
 
-        print(f"⏳ Prochain check dans 1 heure...")
+        print("⏳ Prochain check dans 1 heure...")
         await asyncio.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
